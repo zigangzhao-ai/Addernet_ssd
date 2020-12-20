@@ -47,7 +47,7 @@ parser.add_argument('--basenet', default= "vgg16_reducedfc.pth",
                     help='Pretrained base model')
 parser.add_argument('--batch_size', default=4, type=int,
                     help='Batch size for training')
-parser.add_argument('--resume', default=None, type=str,
+parser.add_argument('--resume', default="weights/ssd300_COCO_50000.pth", type=str,
                     help='Checkpoint state_dict file to resume training from')
 parser.add_argument('--start_iter', default=0, type=int,
                     help='Resume training at this iter')
@@ -135,7 +135,10 @@ def train():
     optimizer1 = optim.Adam(net.parameters(), lr=args.lr, betas=(0.9, 0.999),eps=1e-8,  
                           weight_decay=0)
     #train_scheduler = optim.lr_scheduler.MultiStepLR(optimizer, milestones=[8000, 10000, 12000], gamma=0.2) #learning rate decay
-    warmup_scheduler = WarmUpLR(optimizer, 40 * 5)
+    iter_per_epoch = len(dataset) // args.batch_size
+    print("iter_per_epoch=", iter_per_epoch, "==starting warmup==")
+    warmup_scheduler = WarmUpLR(optimizer, iter_per_epoch * 5)
+
     criterion = MultiBoxLoss(cfg['num_classes'], 0.5, True, 0, True, 3, 0.5,
                              False, args.cuda)
 
@@ -164,11 +167,12 @@ def train():
     data_loader = data.DataLoader(dataset, args.batch_size,
                                   num_workers=args.num_workers,
                                   shuffle=True, collate_fn=detection_collate,
-                                  pin_memory=True)
+                                  pin_memory=True,drop_last=True)
     # create batch iterator
     batch_iterator = iter(data_loader)
     for iteration in range(args.start_iter, cfg['max_iter']):
-
+        
+        iteration += 50000
         if iteration in cfg['lr_steps']:
             step_index += 1
             adjust_learning_rate(optimizer, args.gamma, step_index)
@@ -180,9 +184,7 @@ def train():
             batch_iterator = iter(data_loader)  
             images, targets = next(batch_iterator)
         
-        #variable的volatile属性默认为False，如果某一个variable的volatile属性被设为True，
-        #那么所有依赖它的节点volatile属性都为True。volatile属性为True的节点不会求导，volatile的优先级比requires_grad高
-        # replace by  with torch.no_grad() 
+       # [volatile=True] replace by  with torch.no_grad() 
 
         if args.cuda:
             images = Variable(images.cuda())
@@ -206,7 +208,7 @@ def train():
         #loss.backward()
         #nn.utils.clip_grad_norm_(net.parameters(), max_norm=2, norm_type=2) ##add by zzg
         #print(iteration)
-        if iteration <= 200:
+        if iteration <= iter_per_epoch * 5:
             warmup_scheduler.step()
         else:
             optimizer.step()
@@ -222,7 +224,7 @@ def train():
             print('iter ' + repr(iteration) + ' || Loss: %.4f ||'%(loss.item()),end=' ')
 
 
-        if iteration != 0 and iteration % 500 == 0:
+        if iteration >= 10000 and iteration % 500 == 0:
             print('Saving state, iter:', iteration)
             torch.save(ssd_net.state_dict(), 'weights/ssd300_COCO_' +
                        repr(iteration) + '.pth')
@@ -248,7 +250,7 @@ def xavier(param):
 def weights_init(m):
     if isinstance(m, nn.Conv2d):
         xavier(m.weight.data)
-        #m.bias.data.zero_()
+        m.bias.data.zero_()
 
 def focalloss_weights_init(m):
     ##initialize the bias for focal loss

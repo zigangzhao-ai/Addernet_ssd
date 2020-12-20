@@ -6,7 +6,7 @@ from layers import *
 from data import voc, coco
 import os
 import resnet18_adder as resnet
-from resnet18_adder import Extra_layers, conv1x1
+from resnet18_adder import Extra_layers, conv1x1, conv3x3
 from AdderNet import adder
 
 
@@ -48,6 +48,8 @@ class SSD(nn.Module):
         self.resnet = base
         #print(base)
         # Layer learns to scale the l2 normalized features from conv4_3
+        self.L2Norm = L2Norm(512, 20)
+        #self.extras = nn.ModuleList(extras)
         self.extras = extras
         print(self.extras)
 
@@ -136,6 +138,16 @@ class SSD(nn.Module):
                 self.priors
             )
         return output
+       
+    def load_weights(self, base_file):
+        other, ext = os.path.splitext(base_file)
+        if ext == '.pkl' or '.pth':
+            print('Loading weights into state dict...')
+            self.load_state_dict(torch.load(base_file,
+                                 map_location='cuda:0'))
+            print('Finished!')
+        else:
+            print('Sorry only .pth and .pkl files supported.')
 
 
 
@@ -164,6 +176,35 @@ def multibox_adder(resnet, extra_layers, num_classes):
 
     loc_layers += [conv1x1(256, 4 * 4, stride=1)]
     conf_layers += [conv1x1(256, 4 * num_classes, stride=1)]
+
+    return resnet, extra_layers, (loc_layers, conf_layers)
+
+
+def multibox_adder_1(resnet, extra_layers, num_classes):
+    '''
+    detection head --> use addernet
+    '''
+    loc_layers = []
+    conf_layers = []
+
+    ### may be have bug ###
+    loc_layers += [conv3x3(128, 4 * 4, stride=1)]
+    conf_layers += [conv3x3(128, 4 * num_classes, stride=1)]
+
+    loc_layers += [conv3x3(256, 6 * 4, stride=1)]
+    conf_layers += [conv3x3(256, 6 * num_classes, stride=1)]
+
+    loc_layers += [conv3x3(512, 6 * 4, stride=1)]
+    conf_layers += [conv3x3(512, 6 * num_classes, stride=1)]
+
+    loc_layers += [conv3x3(512, 6 * 4, stride=1)]
+    conf_layers += [conv3x3(512, 6 * num_classes, stride=1)]
+
+    loc_layers += [conv3x3(256, 4 * 4, stride=1)]
+    conf_layers += [conv3x3(256, 4 * num_classes, stride=1)]
+
+    loc_layers += [conv3x3(256, 4 * 4, stride=1)]
+    conf_layers += [conv3x3(256, 4 * num_classes, stride=1)]
 
     return resnet, extra_layers, (loc_layers, conf_layers)
 
@@ -217,7 +258,7 @@ def build_ssd(phase, size=300, num_classes=21):
     
     extra = Extra_layers(512)
 
-    base_, extras_, head_ = multibox(resnet.resnet18(), extra, num_classes)
+    base_, extras_, head_ = multibox_adder(resnet.resnet18(), extra, num_classes)
 
     return SSD(phase, size, base_, extras_, head_, num_classes)
 
