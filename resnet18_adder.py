@@ -4,7 +4,7 @@ code by zzg 2020-12-17
 '''
 import torch
 import torch.nn as nn
-#from AdderNetCuda import adder
+# from AdderNetCuda import adder
 from AdderNet import adder
 
 
@@ -110,7 +110,7 @@ class ResNet(nn.Module):
 
         # x = self.avgpool(x)
         # x = self.fc(x)
-        # x = self.bn2(x)
+        x = self.bn2(x)
         # return x.view(x.size(0), -1)
         return x
 
@@ -125,7 +125,7 @@ def conv_bn(inp, oup, stride, padding):
         #nn.Conv2d(inp, oup, 3, stride, 1, bias=False),
         conv3x3_p(inp, oup, stride, padding),
         nn.BatchNorm2d(oup),
-        nn.ReLU6(inplace=True)
+        nn.ReLU(inplace=True)
     )
 
 def conv1_bn(inp, oup, stride):
@@ -133,8 +133,16 @@ def conv1_bn(inp, oup, stride):
         #nn.Conv2d(inp, oup, 1, 1, 0, bias=False),
         conv1x1(inp, oup, 1),
         nn.BatchNorm2d(oup),
-        nn.ReLU6(inplace=True),
+        nn.ReLU(inplace=True),
     )
+
+def conv1_bn_norelu(inp, oup, stride):
+    return nn.Sequential(
+        #nn.Conv2d(inp, oup, 1, 1, 0, bias=False),
+        conv1x1(inp, oup, 1),
+        nn.BatchNorm2d(oup),
+    )
+
 
 class Extra_layers(nn.Module):
     ''' add extra layers
@@ -161,8 +169,8 @@ class Extra_layers(nn.Module):
         x = self.conv3(x)
         x = self.conv4(x)
 
-        x = self.conv1(x)
-        x = self.conv2(x)
+        x = self.conv5(x)
+        x = self.conv6(x)
        
         return x
 
