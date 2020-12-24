@@ -18,6 +18,9 @@ import torch.nn.init as init
 import torch.utils.data as data
 import numpy as np
 import argparse
+from eval import test_net
+from data import VOC_ROOT, VOCAnnotationTransform, VOCDetection, BaseTransform
+from data import VOC_CLASSES as labelmap
 
 import warnings
 warnings.filterwarnings('ignore')
@@ -65,6 +68,8 @@ parser.add_argument('--gamma', default=0.1, type=float,
                     help='Gamma update for SGD')
 parser.add_argument('--save_folder', default='weights/',
                     help='Directory for saving checkpoint models')
+parser.add_argument('--save_folder_out', default='eval/',
+                    help='result output')
 parser.add_argument('--pretrained_model', default='pretrained_model/',
                     help='Directory for pretrained_model')
 args = parser.parse_args()
@@ -131,6 +136,25 @@ def train():
         resnet50_weights = torch.load(args.pretrained_model + args.basenet)
         model = ssd_net.resnet
         model.load_state_dict(resnet50_weights, strict=False)
+    
+    ## add addernet tricks--Adaptive learning rate adjustment for addernet layers
+    model_other_params = []
+    params_dict = []
+    eta = 50
+    for name, param in net.named_parameters():
+        if 'adder' in name:
+            k = 1
+            for s in param.shape:
+                k *= s
+            k = math.sqrt(k)
+            params_dict.append({"params": [param], 'lr': args.lr * eta / k})
+        else:
+            model_other_params.append(param)
+
+    params_dict.append({"params": model_other_params, 'lr': args.lr})
+
+    #print(params_dict)
+
 
     if args.cuda:
         net = net.cuda()
@@ -143,14 +167,15 @@ def train():
         ssd_net.conf.apply(weights_init)
         
         
-
-    optimizer = optim.SGD(net.parameters(), lr=args.lr, momentum=args.momentum,
+    # optimizer = optim.SGD(net.parameters(), lr=args.lr, momentum=args.momentum,
+    #                       weight_decay=args.weight_decay)
+    optimizer = optim.SGD(params_dict, lr=args.lr, momentum=args.momentum,
                           weight_decay=args.weight_decay)
-
     optimizer1 = optim.Adam(net.parameters(), lr=args.lr, betas=(0.9, 0.999),eps=1e-8,  
                           weight_decay=0)
     #train_scheduler = optim.lr_scheduler.MultiStepLR(optimizer, milestones=[8000, 10000, 12000], gamma=0.2) #learning rate decay
-    iter_per_epoch = len(dataset) // args.batch_size
+    #iter_per_epoch = len(dataset) // args.batch_size
+    iter_per_epoch = 50
     print("iter_per_epoch=", iter_per_epoch, "==starting warmup==")
     warmup_scheduler = WarmUpLR(optimizer, iter_per_epoch * 5)
 
@@ -182,12 +207,12 @@ def train():
     data_loader = data.DataLoader(dataset, args.batch_size,
                                   num_workers=args.num_workers,
                                   shuffle=True, collate_fn=detection_collate,
-                                  pin_memory=True,drop_last=True)
+                                  pin_memory=True, drop_last=True)
     # create batch iterator
     batch_iterator = iter(data_loader)
     for iteration in range(args.start_iter, cfg['max_iter']):
         
-
+        #iteration += 60000
         if iteration in cfg['lr_steps']:
             step_index += 1
             adjust_learning_rate(optimizer, args.gamma, step_index)
@@ -243,8 +268,34 @@ def train():
             print('Saving state, iter:', iteration)
             torch.save(ssd_net.state_dict(), 'weights/ssd300_COCO_' +
                        repr(iteration) + '.pth')
+            
+            ##add eval code:
+            '''
+            set_type = 'test'
+            num_classes = len(labelmap) + 1                      # +1 for background
+            net = build_ssd('test', 300, num_classes)            # initialize SSD
+
+
+            net.load_state_dict(torch.load('weights/ssd300_COCO_' + repr(iteration) + '.pth'))
+            net.eval()
+            print('Finished loading model!')
+            # load data
+            dataset_eval = VOCDetection(args.dataset_root, [('2007', set_type)],
+                                BaseTransform(300, MEANS),
+                                VOCAnnotationTransform())
+            if args.cuda:
+                net = net.cuda()
+                cudnn.benchmark = True
+            # evaluation
+            test_net(args.save_folder_out, net, args.cuda, dataset_eval,
+                    BaseTransform(300, MEANS), 5, 300,
+                    thresh=0.01)
+            '''
+
     torch.save(ssd_net.state_dict(),
                args.save_folder + '' + args.dataset + '.pth')
+    
+
 
 
 def adjust_learning_rate(optimizer, gamma, step):
