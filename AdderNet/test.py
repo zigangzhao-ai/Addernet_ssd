@@ -9,7 +9,7 @@ import torchvision.transforms as transforms
 import torchvision.datasets as datasets
 
 parser = argparse.ArgumentParser(description='PyTorch ImageNet Training')
-parser.add_argument('--dataset', type=str, default='ImageNet', choices=['cifar10','ImageNet'])
+parser.add_argument('--dataset', type=str, default='cifar10', choices=['cifar10','ImageNet'])
 parser.add_argument('-j', '--workers', default=4, type=int, metavar='N',
                     help='number of data loading workers (default: 4)')
 parser.add_argument('-b', '--batch-size', default=256, type=int,
@@ -18,9 +18,9 @@ parser.add_argument('-b', '--batch-size', default=256, type=int,
                          'batch size of all GPUs on the current node when '
                          'using Data Parallel or Distributed Data Parallel')
 parser.add_argument('--data_dir', type=str,
-                    help='path to dataset',default="/cache/imagenet/val/")
+                    help='path to dataset',default="data")
 parser.add_argument('--model_dir', type=str,
-                    help='path to dataset',default="models/ResNet50-AdderNet.pth")
+                    help='path to dataset',default="./pretrained_model/ResNet20-AdderNet.pth")
 best_acc1 = 0
 args, unparsed = parser.parse_known_args()
 
@@ -61,7 +61,8 @@ def main():
             ])),
             batch_size=args.batch_size, shuffle=False,
             num_workers=args.workers, pin_memory=True)
-
+    
+    #print(val_loader)
     acc1 = validate(val_loader, model)
 
 
@@ -80,6 +81,7 @@ def validate(val_loader, model):
             output = model(input)
 
             # measure accuracy and record loss
+            #print(output.shape, target.shape)
             acc1, acc5 = accuracy(output, target, topk=(1, 5))
             top1.update(acc1[0], input.size(0))
             top5.update(acc5[0], input.size(0))
@@ -107,6 +109,10 @@ class AverageMeter(object):
         self.count += n
         self.avg = self.sum / self.count
 
+    def __str__(self):
+        fmtstr = '{name} {val' + self.fmt + '} ({avg' + self.fmt + '})'
+        return fmtstr.format(**self.__dict__)
+
 
 
 def accuracy(output, target, topk=(1,)):
@@ -121,7 +127,7 @@ def accuracy(output, target, topk=(1,)):
 
         res = []
         for k in topk:
-            correct_k = correct[:k].view(-1).float().sum(0, keepdim=True)
+            correct_k = correct[:k].reshape(-1).float().sum(0, keepdim=True)
             res.append(correct_k.mul_(100.0 / batch_size))
         return res
 
